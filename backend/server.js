@@ -1,4 +1,4 @@
-// server.js - Express + MongoDB backend for loansure
+// server.js
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -12,52 +12,45 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ==================== MIDDLEWARE ====================
+// ---------- CORS ----------
+const allowedOrigins = [
+  'http://localhost:5173',          // local dev
+  'https://mortgage-poc.vercel.app' // your Vercel frontend
+];
 
-// CORS – allow your Vercel app + local dev
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin(origin, callback) {
       // allow non-browser tools (Postman, curl) with no origin
       if (!origin) return callback(null, true);
-
-      const allowedOrigins = [
-        'http://localhost:5173',
-        'https://mortgage-poc.vercel.app',
-        'https://mortgage-mt7xdhsou-ashley-dowlings-projects.vercel.app',
-        'https://mortgage-kt1yzqyi7-ashley-dowlings-projects.vercel.app',
-      ];
-
-      if (
-        allowedOrigins.includes(origin) ||
-        /vercel\.app$/.test(origin) // any Vercel preview URL
-      ) {
+      if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-
-      return callback(new Error('Not allowed by CORS'));
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   })
 );
 
+// Make sure preflight OPTIONS requests work for all routes
+app.options('*', cors());
+
+// ---------- Middleware ----------
 app.use(express.json());
 
-// ==================== MONGODB CONNECTION ====================
-
+// ---------- Mongo Connection ----------
 if (!process.env.MONGODB_URI) {
-  console.error('❌ MONGODB_URI is not set in environment variables');
+  console.error('❌ MONGODB_URI is not set');
+} else {
+  mongoose
+    .connect(process.env.MONGODB_URI)
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 }
 
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
-
-// ==================== SCHEMAS ====================
-
-// User Schema
+// ---------- Schemas ----------
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
@@ -67,7 +60,6 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Scenario Schema
 const scenarioSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true },
@@ -77,7 +69,6 @@ const scenarioSchema = new mongoose.Schema({
   campaignDate: { type: String },
   marketingProduct: { type: String },
 
-  // Financial Data
   mortgageBalance: { type: Number, required: true },
   closingCosts: { type: Number, required: true },
   additionalCash: { type: Number, default: 0 },
@@ -86,7 +77,6 @@ const scenarioSchema = new mongoose.Schema({
   currentApr: { type: Number, required: true },
   currentTerm: { type: Number, required: true },
 
-  // Debts
   debts: [
     {
       balance: Number,
@@ -95,7 +85,6 @@ const scenarioSchema = new mongoose.Schema({
     },
   ],
 
-  // Estimates
   estimatedMIP: { type: Number, default: 0.55 },
   estimatedMonthlyTaxes: { type: Number, default: 285.62 },
   estimatedMonthlyInsurance: { type: Number, default: 264.23 },
@@ -106,14 +95,15 @@ const scenarioSchema = new mongoose.Schema({
 
 const Scenario = mongoose.model('Scenario', scenarioSchema);
 
-// ==================== AUTH MIDDLEWARE ====================
-
+// ---------- Auth Middleware ----------
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
+    return res
+      .status(401)
+      .json({ error: 'Access denied. No token provided.' });
   }
 
   try {
@@ -128,9 +118,7 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// ==================== AUTH ROUTES ====================
-
-// Register
+// ---------- Auth Routes ----------
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -147,12 +135,7 @@ app.post('/api/auth/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const user = new User({
-      email,
-      password: hashedPassword,
-      name,
-    });
-
+    const user = new User({ email, password: hashedPassword, name });
     await user.save();
 
     const token = jwt.sign(
@@ -163,11 +146,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     res.status(201).json({
       token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-      },
+      user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -175,7 +154,6 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -204,11 +182,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-      },
+      user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -216,7 +190,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Get current user
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
@@ -227,9 +200,7 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
   }
 });
 
-// ==================== SCENARIO ROUTES ====================
-
-// Get all scenarios for user
+// ---------- Scenario Routes ----------
 app.get('/api/scenarios', authenticateToken, async (req, res) => {
   try {
     const scenarios = await Scenario.find({ userId: req.user.userId }).sort({
@@ -242,7 +213,6 @@ app.get('/api/scenarios', authenticateToken, async (req, res) => {
   }
 });
 
-// Get single scenario
 app.get('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOne({
@@ -261,7 +231,6 @@ app.get('/api/scenarios/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Create scenario
 app.post('/api/scenarios', authenticateToken, async (req, res) => {
   try {
     const scenario = new Scenario({
@@ -277,7 +246,6 @@ app.post('/api/scenarios', authenticateToken, async (req, res) => {
   }
 });
 
-// Update scenario
 app.put('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOneAndUpdate(
@@ -297,7 +265,6 @@ app.put('/api/scenarios/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete scenario
 app.delete('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOneAndDelete({
@@ -316,7 +283,6 @@ app.delete('/api/scenarios/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Search scenarios
 app.get('/api/scenarios/search/:query', authenticateToken, async (req, res) => {
   try {
     const query = req.params.query;
@@ -337,19 +303,17 @@ app.get('/api/scenarios/search/:query', authenticateToken, async (req, res) => {
   }
 });
 
-// ==================== HEALTH CHECK ====================
-
+// ---------- Health & Root ----------
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// simple root route (optional)
+// nice message at "/"
 app.get('/', (req, res) => {
-  res.send('loansure API is running');
+  res.send('Loansure API is running');
 });
 
-// ==================== START SERVER ====================
-
+// ---------- Start Server ----------
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
