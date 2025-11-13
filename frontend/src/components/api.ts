@@ -2,7 +2,14 @@
 
 import { SavedScenario, User } from "./types";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// Base API URL
+// - In production (Vercel), set VITE_API_URL to your Render URL, e.g.
+//   VITE_API_URL="https://mortgage-poc.onrender.com/api"
+// - Locally, you can still use http://localhost:3001/api while running the backend.
+//   If VITE_API_URL isn't set, we'll fall back to the Render URL.
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://mortgage-poc.onrender.com/api";
 
 // ==================== AUTH FUNCTIONS ====================
 
@@ -15,58 +22,65 @@ interface AuthResponse {
   };
 }
 
-export async function register(email: string, password: string, name: string): Promise<AuthResponse> {
+export async function register(
+  email: string,
+  password: string,
+  name: string
+): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/register`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ email, password, name }),
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Registration failed');
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Registration failed");
   }
 
   const data = await response.json();
-  localStorage.setItem('token', data.token);
-  localStorage.setItem('user', JSON.stringify(data.user));
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("user", JSON.stringify(data.user));
   return data;
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(
+  email: string,
+  password: string
+): Promise<AuthResponse> {
   const response = await fetch(`${API_URL}/auth/login`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ email, password }),
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Login failed');
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Login failed");
   }
 
   const data = await response.json();
-  localStorage.setItem('token', data.token);
-  localStorage.setItem('user', JSON.stringify(data.user));
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("user", JSON.stringify(data.user));
   return data;
 }
 
 export function logout(): void {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
 }
 
 export function getStoredUser(): User | null {
-  const userStr = localStorage.getItem('user');
+  const userStr = localStorage.getItem("user");
   return userStr ? JSON.parse(userStr) : null;
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem('token');
+  return localStorage.getItem("token");
 }
 
 export function isAuthenticated(): boolean {
@@ -78,8 +92,8 @@ export function isAuthenticated(): boolean {
 function getAuthHeaders() {
   const token = getToken();
   return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -89,7 +103,7 @@ export async function getAllScenarios(): Promise<SavedScenario[]> {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch scenarios');
+    throw new Error("Failed to fetch scenarios");
   }
 
   return response.json();
@@ -101,35 +115,40 @@ export async function getScenarioById(id: string): Promise<SavedScenario> {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch scenario');
+    throw new Error("Failed to fetch scenario");
   }
 
   return response.json();
 }
 
-export async function createScenario(scenario: Omit<SavedScenario, '_id' | 'createdAt' | 'updatedAt'>): Promise<SavedScenario> {
+export async function createScenario(
+  scenario: Omit<SavedScenario, "_id" | "createdAt" | "updatedAt">
+): Promise<SavedScenario> {
   const response = await fetch(`${API_URL}/scenarios`, {
-    method: 'POST',
+    method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify(scenario),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to create scenario');
+    throw new Error("Failed to create scenario");
   }
 
   return response.json();
 }
 
-export async function updateScenario(id: string, scenario: Partial<SavedScenario>): Promise<SavedScenario> {
+export async function updateScenario(
+  id: string,
+  scenario: Partial<SavedScenario>
+): Promise<SavedScenario> {
   const response = await fetch(`${API_URL}/scenarios/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: getAuthHeaders(),
     body: JSON.stringify(scenario),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to update scenario');
+    throw new Error("Failed to update scenario");
   }
 
   return response.json();
@@ -137,25 +156,30 @@ export async function updateScenario(id: string, scenario: Partial<SavedScenario
 
 export async function deleteScenario(id: string): Promise<void> {
   const response = await fetch(`${API_URL}/scenarios/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: getAuthHeaders(),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to delete scenario');
+    throw new Error("Failed to delete scenario");
   }
 }
 
 // Alias for createScenario - used by SaveScenarioModal
 export const saveScenario = createScenario;
 
-export async function searchScenarios(query: string): Promise<SavedScenario[]> {
-  const response = await fetch(`${API_URL}/scenarios/search/${encodeURIComponent(query)}`, {
-    headers: getAuthHeaders(),
-  });
+export async function searchScenarios(
+  query: string
+): Promise<SavedScenario[]> {
+  const response = await fetch(
+    `${API_URL}/scenarios/search/${encodeURIComponent(query)}`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
 
   if (!response.ok) {
-    throw new Error('Failed to search scenarios');
+    throw new Error("Failed to search scenarios");
   }
 
   return response.json();
@@ -163,7 +187,10 @@ export async function searchScenarios(query: string): Promise<SavedScenario[]> {
 
 // ==================== HEALTH CHECK ====================
 
-export async function checkHealth(): Promise<{ status: string; timestamp: string }> {
+export async function checkHealth(): Promise<{
+  status: string;
+  timestamp: string;
+}> {
   const response = await fetch(`${API_URL}/health`);
   return response.json();
 }
