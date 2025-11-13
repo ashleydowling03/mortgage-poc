@@ -1,5 +1,4 @@
-// server.js - Express + MongoDB Backend API
-// server.js - Express + MongoDB Backend API
+// server.js - Express + MongoDB backend for loansure
 
 import express from 'express';
 import mongoose from 'mongoose';
@@ -13,75 +12,92 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ---------------- CORS CONFIG ----------------
-const allowedOrigins = [
-  'http://localhost:5173',                 // Vite dev
-  'http://localhost:3000',                 // just in case
-  'https://mortgage-poc.vercel.app',       // your Vercel frontend
-];
+// ==================== MIDDLEWARE ====================
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    // allow non-browser tools (like curl / Postman) where origin may be undefined
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('Not allowed by CORS'));
-  },
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  allowedHeaders: 'Content-Type,Authorization',
-};
+// CORS – allow your Vercel app + local dev
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow non-browser tools (Postman, curl) with no origin
+      if (!origin) return callback(null, true);
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // handle preflight
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'https://mortgage-poc.vercel.app',
+        'https://mortgage-mt7xdhsou-ashley-dowlings-projects.vercel.app',
+        'https://mortgage-kt1yzqyi7-ashley-dowlings-projects.vercel.app',
+      ];
 
-// Body parser
+      if (
+        allowedOrigins.includes(origin) ||
+        /vercel\.app$/.test(origin) // any Vercel preview URL
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-// ---------------- MONGO CONNECTION ----------------
+// ==================== MONGODB CONNECTION ====================
+
+if (!process.env.MONGODB_URI) {
+  console.error('❌ MONGODB_URI is not set in environment variables');
+}
+
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
-// ---------------- SCHEMAS ----------------
+// ==================== SCHEMAS ====================
+
+// User Schema
 const userSchema = new mongoose.Schema({
-  email:    { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  name:     { type: String, required: true },
-  createdAt:{ type: Date, default: Date.now },
+  name: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
 });
 
 const User = mongoose.model('User', userSchema);
 
+// Scenario Schema
 const scenarioSchema = new mongoose.Schema({
-  userId:             { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  name:               { type: String, required: true },
-  leadId:             { type: String },
-  clientName:         { type: String, required: true },
-  propertyAddress:    { type: String, required: true },
-  campaignDate:       { type: String },
-  marketingProduct:   { type: String },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  name: { type: String, required: true },
+  leadId: { type: String },
+  clientName: { type: String, required: true },
+  propertyAddress: { type: String, required: true },
+  campaignDate: { type: String },
+  marketingProduct: { type: String },
 
   // Financial Data
-  mortgageBalance:    { type: Number, required: true },
-  closingCosts:       { type: Number, required: true },
-  additionalCash:     { type: Number, default: 0 },
-  offerRate:          { type: Number, required: true },
-  offerTerm:          { type: Number, required: true },
-  currentApr:         { type: Number, required: true },
-  currentTerm:        { type: Number, required: true },
+  mortgageBalance: { type: Number, required: true },
+  closingCosts: { type: Number, required: true },
+  additionalCash: { type: Number, default: 0 },
+  offerRate: { type: Number, required: true },
+  offerTerm: { type: Number, required: true },
+  currentApr: { type: Number, required: true },
+  currentTerm: { type: Number, required: true },
 
   // Debts
-  debts: [{
-    balance:    Number,
-    minPayment: Number,
-    include:    Boolean,
-  }],
+  debts: [
+    {
+      balance: Number,
+      minPayment: Number,
+      include: Boolean,
+    },
+  ],
 
   // Estimates
-  estimatedMIP:              { type: Number, default: 0.55 },
-  estimatedMonthlyTaxes:     { type: Number, default: 285.62 },
+  estimatedMIP: { type: Number, default: 0.55 },
+  estimatedMonthlyTaxes: { type: Number, default: 285.62 },
   estimatedMonthlyInsurance: { type: Number, default: 264.23 },
 
   createdAt: { type: Date, default: Date.now },
@@ -90,25 +106,31 @@ const scenarioSchema = new mongoose.Schema({
 
 const Scenario = mongoose.model('Scenario', scenarioSchema);
 
-// ---------------- AUTH MIDDLEWARE ----------------
+// ==================== AUTH MIDDLEWARE ====================
+
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token      = authHeader && authHeader.split(' ')[1];
+  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
 
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const verified = jwt.verify(
+      token,
+      process.env.JWT_SECRET || 'your-secret-key'
+    );
     req.user = verified;
     next();
   } catch (error) {
-    return res.status(403).json({ error: 'Invalid token' });
+    res.status(403).json({ error: 'Invalid token' });
   }
 };
 
-// ---------------- AUTH ROUTES ----------------
+// ==================== AUTH ROUTES ====================
+
+// Register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -122,10 +144,15 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'User already exists' });
     }
 
-    const salt           = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const user = new User({ email, password: hashedPassword, name });
+    const user = new User({
+      email,
+      password: hashedPassword,
+      name,
+    });
+
     await user.save();
 
     const token = jwt.sign(
@@ -134,22 +161,29 @@ app.post('/api/auth/register', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    return res.status(201).json({
+    res.status(201).json({
       token,
-      user: { id: user._id, email: user.email, name: user.name },
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+      },
     });
   } catch (error) {
     console.error('Register error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res
+        .status(400)
+        .json({ error: 'Email and password are required' });
     }
 
     const user = await User.findOne({ email });
@@ -168,38 +202,47 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    return res.json({
+    res.json({
       token,
-      user: { id: user._id, email: user.email, name: user.name },
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+      },
     });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Get current user
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
-    return res.json(user);
+    res.json(user);
   } catch (error) {
     console.error('Get user error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ---------------- SCENARIO ROUTES ----------------
+// ==================== SCENARIO ROUTES ====================
+
+// Get all scenarios for user
 app.get('/api/scenarios', authenticateToken, async (req, res) => {
   try {
-    const scenarios = await Scenario.find({ userId: req.user.userId })
-      .sort({ updatedAt: -1 });
-    return res.json(scenarios);
+    const scenarios = await Scenario.find({ userId: req.user.userId }).sort({
+      updatedAt: -1,
+    });
+    res.json(scenarios);
   } catch (error) {
     console.error('Get scenarios error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Get single scenario
 app.get('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOne({
@@ -211,13 +254,14 @@ app.get('/api/scenarios/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Scenario not found' });
     }
 
-    return res.json(scenario);
+    res.json(scenario);
   } catch (error) {
     console.error('Get scenario error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Create scenario
 app.post('/api/scenarios', authenticateToken, async (req, res) => {
   try {
     const scenario = new Scenario({
@@ -226,13 +270,14 @@ app.post('/api/scenarios', authenticateToken, async (req, res) => {
     });
 
     await scenario.save();
-    return res.status(201).json(scenario);
+    res.status(201).json(scenario);
   } catch (error) {
     console.error('Create scenario error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Update scenario
 app.put('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOneAndUpdate(
@@ -245,13 +290,14 @@ app.put('/api/scenarios/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Scenario not found' });
     }
 
-    return res.json(scenario);
+    res.json(scenario);
   } catch (error) {
     console.error('Update scenario error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Delete scenario
 app.delete('/api/scenarios/:id', authenticateToken, async (req, res) => {
   try {
     const scenario = await Scenario.findOneAndDelete({
@@ -263,44 +309,47 @@ app.delete('/api/scenarios/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Scenario not found' });
     }
 
-    return res.json({ message: 'Scenario deleted successfully' });
+    res.json({ message: 'Scenario deleted successfully' });
   } catch (error) {
     console.error('Delete scenario error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
+// Search scenarios
 app.get('/api/scenarios/search/:query', authenticateToken, async (req, res) => {
   try {
     const query = req.params.query;
     const scenarios = await Scenario.find({
       userId: req.user.userId,
       $or: [
-        { name:           { $regex: query, $options: 'i' } },
-        { clientName:     { $regex: query, $options: 'i' } },
-        { propertyAddress:{ $regex: query, $options: 'i' } },
-        { leadId:         { $regex: query, $options: 'i' } },
+        { name: { $regex: query, $options: 'i' } },
+        { clientName: { $regex: query, $options: 'i' } },
+        { propertyAddress: { $regex: query, $options: 'i' } },
+        { leadId: { $regex: query, $options: 'i' } },
       ],
     }).sort({ updatedAt: -1 });
 
-    return res.json(scenarios);
+    res.json(scenarios);
   } catch (error) {
     console.error('Search scenarios error:', error);
-    return res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ---------------- HEALTH + ROOT ----------------
+// ==================== HEALTH CHECK ====================
+
 app.get('/api/health', (req, res) => {
-  return res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Optional: nice message at /
+// simple root route (optional)
 app.get('/', (req, res) => {
-  res.send('Loansure backend is running. Try GET /api/health');
+  res.send('loansure API is running');
 });
 
-// ---------------- START SERVER ----------------
+// ==================== START SERVER ====================
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
