@@ -11,33 +11,33 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ======================================
-// 🚀 CORS CONFIG — THIS FIXES YOUR ERROR
 // ======================================
-const allowedOrigins = [
-  process.env.FRONTEND_URL,       // You will set this in Render Dashboard
-  "http://localhost:5173",        // Local dev
-];
-
+// 🚀 CORS CONFIG
+// ======================================
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow non-browser tools (Postman, curl)
+    origin: function (origin, callback) {
+      const allowedOrigins = [
+        'https://mortgage-poc.vercel.app',
+        'http://localhost:5173',
+        'http://localhost:3000',
+      ];
+      
+      // Allow requests with no origin (mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
       } else {
-        console.log("❌ BLOCKED BY CORS:", origin);
-        return callback(new Error("Not allowed by CORS"));
+        console.log('❌ CORS blocked origin:', origin);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
-
-// Handle preflight OPTIONS requests
-app.options("*", cors());
-
 // Needed to read JSON
 app.use(express.json());
 
